@@ -1,6 +1,7 @@
 #include "defines.h"
 #include "interrupt_ID.h"
 #include "address_map_arm.h"
+#include <stdbool.h>
 
 volatile int pixel_buffer_start; // global variable
 //Interrupts 
@@ -21,13 +22,28 @@ void draw_line(int x0,int x1,int y0,int y1, int color);
 
 void clear_screen();
 void wait_for_vsync(); 
+void reset_dimensions();
 
 int y = 238;
 int increment = 0;
 
+int x_start = 300;
+int x_end = 320;
+int y_start = 50;
+int y_end = 100;
+
+int shift = 0;
+
+int count = 0;
+
+int seg7[10] = {0b00111111, 0b00000110, 0b01011011, 0b01001111, 0b01100110, 0b01101101, 0b01111101, 0b00000111, 0b01111111, 0b01100111}; 
+
+bool off_screen = false;
+
 int main(void){
 
-    volatile int * pixel_ctrl_ptr = (int *)0xFF203020;
+    volatile int *pixel_ctrl_ptr = (int *)0xFF203020;
+	volatile int *HEX_3_0_pt = (int *)0xFF200020;
 	
 	set_A9_IRQ_stack(); // initialize the stack pointer for IRQ mode
 	config_GIC(); // configure the general interrupt controller
@@ -38,12 +54,19 @@ int main(void){
 
     pixel_buffer_start = *pixel_ctrl_ptr;
 
-
     clear_screen();
 
     draw_line(130, y, 190, y, 0x001F);   // this line is blue
 	
+		
+	int firstDigit;
+	int secondDigit;
+	int thirdDigit;
+	
     while(1){
+		
+		int i;
+		int j;
   
 	  draw_line(130, y, 190, y, 0x0);
 	  
@@ -54,10 +77,51 @@ int main(void){
 		   }else if(y <= 0){
 		   increment = 0;
 		   } 
-	  
+		   
 	  draw_line(130, y, 190, y, 0x001F);
+	  
+	  //drawing obstacles
+	   if (!off_screen) {
+		  for(i = y_start;i<y_end;i++){
+
+			for(j = x_start-shift;j<x_end-shift;j++){
+
+				plot_pixel(j,i,0x0); 
+
+			}
+
+		}
+		
+		 shift= shift+2;
+		 
+		 //check is off screen
+		 if (x_end-shift < 0) {
+			 off_screen = true;
+		 }
+		 
+		 for(i = y_start;i<y_end;i++){
+
+			for(j = x_start-shift;j<x_end-shift;j++){
+
+				plot_pixel(j,i,0x07FF); 
+
+			}
+
+		}
+	  }
+	  else {
+			reset_dimensions();
+	  }
+	
 	  wait_for_vsync();
-  
+	  
+	  	
+	firstDigit = count/100;
+	secondDigit = (count / 10) - (firstDigit * 10);
+	thirdDigit = count - (firstDigit * 100 + secondDigit*10);
+	
+	*HEX_3_0_pt = seg7[thirdDigit] | seg7[secondDigit] <<8 | seg7[firstDigit] << 16;
+
 	}
  
 }
@@ -77,6 +141,7 @@ void clear_screen(){
         }
 
     }
+
 
 }
 
@@ -148,6 +213,16 @@ void draw_line(int x0,int y0,int x1,int y1, int color){
 
     }
 
+}
+
+void reset_dimensions () {
+	x_start = 300;
+	x_end = 320;
+	y_start = rand() % (190 + 1 - 0) + 0;
+	y_end = y_start+ (rand() % (120 + 1 - 40) + 40);
+	off_screen = false;
+	shift = 0;
+	count++;
 }
 
 void swap(int *x,int *y){
