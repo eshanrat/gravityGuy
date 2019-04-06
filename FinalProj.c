@@ -40,15 +40,24 @@ int seg7[10] = {0b00111111, 0b00000110, 0b01011011, 0b01001111, 0b01100110, 0b01
 
 bool off_screen = false;
 
+	volatile int *HEX_3_0_pt = (int *)0xFF200020;
+
 int main(void){
 
     volatile int *pixel_ctrl_ptr = (int *)0xFF203020;
-	volatile int *HEX_3_0_pt = (int *)0xFF200020;
+	//volatile int * MPcore_private_timer_ptr = (int *)MPCORE_PRIV_TIMER;
 	
 	set_A9_IRQ_stack(); // initialize the stack pointer for IRQ mode
 	config_GIC(); // configure the general interrupt controller
 	config_KEYs(); // configure pushbutton KEYs to generate interrupts
+	config_interval_timer();
 	enable_A9_interrupts(); // enable interrupts
+	
+	int counter  = 2000;      // timeout = 1/(200 MHz) x 200x10^6 = 1 sec
+	
+	//*(MPcore_private_timer_ptr)     = counter; // write to timer load register
+  //  *(MPcore_private_timer_ptr + 2) = 0b011;   // mode = 1 (auto), enable = 1
+	int count = 0;
 	
     /* Read location of the pixel buffer from the pixel buffer controller */
 
@@ -57,12 +66,7 @@ int main(void){
     clear_screen();
 
     draw_line(130, y, 190, y, 0x001F);   // this line is blue
-	
-		
-	int firstDigit;
-	int secondDigit;
-	int thirdDigit;
-	
+
     while(1){
 		
 		int i;
@@ -108,19 +112,22 @@ int main(void){
 			}
 
 		}
+		//while (*(MPcore_private_timer_ptr + 3) == 0)
+           // ;                                // wait for timer to expire
+		
+		//*(MPcore_private_timer_ptr + 3) = 1; // reset timer flag bit
 	  }
 	  else {
 			reset_dimensions();
 	  }
 	
 	  wait_for_vsync();
-	  
 	  	
-	firstDigit = count/100;
-	secondDigit = (count / 10) - (firstDigit * 10);
-	thirdDigit = count - (firstDigit * 100 + secondDigit*10);
+	//firstDigit = count/100;
+	//secondDigit = (count / 10) - (firstDigit * 10);
+	//thirdDigit = count - (firstDigit * 100 + secondDigit*10);
 	
-	*HEX_3_0_pt = seg7[thirdDigit] | seg7[secondDigit] <<8 | seg7[firstDigit] << 16;
+	//*HEX_3_0_pt = seg7[thirdDigit] | seg7[secondDigit] <<8 | seg7[firstDigit] << 16;
 
 	}
  
@@ -304,6 +311,20 @@ void config_KEYs()	{
 	*(KEY_ptr + 2) = 0x3; // enable interrupts for KEY[1]
 }
 
+/* setup the interval timer interrupts in the FPGA */
+void config_interval_timer()	{
+    volatile int * interval_timer_ptr =
+        (int *)TIMER_BASE; // interal timer base address
+
+    /* set the interval timer period for scrolling the HEX displays */
+    int counter                 = 10000000; // 1/(100 MHz) x 5x10^6 = 50 msec
+    *(interval_timer_ptr + 0x2) = (counter & 0xFFFF);
+    *(interval_timer_ptr + 0x3) = (counter >> 16) & 0xFFFF;
+
+    /* start interval timer, enable its interrupts */
+    *(interval_timer_ptr + 1) = 0x7; // STOP = 0, START = 1, CONT = 1, ITO = 1
+}
+
 void pushbutton_ISR(void)
 {
     volatile int * KEY_ptr = (int *)KEY_BASE;
@@ -326,6 +347,23 @@ void pushbutton_ISR(void)
     return;
 }
 
+void interval_timer_ISR()	{
+    volatile int * interval_timer_ptr = (int *)TIMER_BASE;
+	
+	int firstDigit;
+	int secondDigit;
+	int thirdDigit;
+
+    *(interval_timer_ptr) = 0; // Clear the interrupt
+		count++;
+		firstDigit = (count/10)/100;
+		secondDigit = ((count/10) / 10) - (firstDigit * 10);
+		thirdDigit = (count/10) - (firstDigit * 100 + secondDigit*10);
+		*HEX_3_0_pt = seg7[thirdDigit] | seg7[secondDigit] <<8 | seg7[firstDigit] << 16;
+
+    return;
+}
+
 // Define the IRQ exception handler
 void __attribute__((interrupt)) __cs3_isr_irq(void)
 {
@@ -335,6 +373,8 @@ void __attribute__((interrupt)) __cs3_isr_irq(void)
 	
     if (int_ID == KEYS_IRQ) // check if interrupt is from the KEYs
         pushbutton_ISR();
+	else if (int_ID == INTERVAL_TIMER_IRQ) // check if interrupt is from the Altera timer
+        interval_timer_ISR();
     else
         while (1)
             ; // if unexpected, then stay here
@@ -382,6 +422,3 @@ void __attribute__((interrupt)) __cs3_isr_fiq(void)
     while (1)
         ;
 }
-
-
-
