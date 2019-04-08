@@ -3,6 +3,8 @@
 #include "address_map_arm.h"
 #include <stdbool.h>
 
+extern short test123 [240][320];
+
 volatile int pixel_buffer_start; // global variable
 //Interrupts 
 void set_A9_IRQ_stack(void);
@@ -23,6 +25,7 @@ void draw_line(int x0,int x1,int y0,int y1, int color);
 void clear_screen();
 void wait_for_vsync(); 
 void reset_dimensions();
+void game_over();
 
 int y = 238;
 int increment = 0;
@@ -35,6 +38,8 @@ int y_end = 100;
 int shift = 0;
 
 int count = 0;
+
+int lost = 0;
 
 int seg7[10] = {0b00111111, 0b00000110, 0b01011011, 0b01001111, 0b01100110, 0b01101101, 0b01111101, 0b00000111, 0b01111111, 0b01100111}; 
 
@@ -65,25 +70,38 @@ int main(void){
 
     clear_screen();
 
-    draw_line(130, y, 190, y, 0x001F);   // this line is blue
+    draw_line(40, y, 100, y, 0x001F);   // this line is blue
+    
 
     while(1){
 		
-		int i;
+        if(lost){
+            game_over();
+        }
+        
+        int i;
 		int j;
-  
-	  draw_line(130, y, 190, y, 0x0);
-	  
-		  //Changing direction
-		   y = y+increment;
-		   if(y >= 238){
-		   increment = 0;
-		   }else if(y <= 0){
-		   increment = 0;
-		   } 
-		   
-	  draw_line(130, y, 190, y, 0x001F);
-	  
+        
+/*         draw_line(40, y, 100, y, 0x0);
+
+        //Changing direction
+        y = y+increment;
+        if(y >= 238){
+        increment = 0;
+        }else if(y <= 0){
+        increment = 0;
+        } 
+
+        if(((x_start-shift >= 40 && x_start-shift <= 100) || (x_end-shift >= 40 && x_end-shift <= 100)) && 
+           (y >= y_start && y<= y_end) ){
+            //draw_line(40, y, 100, y, 0x7E0);
+            lost = 1;
+        }
+        else{
+            draw_line(40, y, 100, y, 0x001F);
+        } */
+    
+        
 	  //drawing obstacles
 	   if (!off_screen) {
 		  for(i = y_start;i<y_end;i++){
@@ -112,6 +130,8 @@ int main(void){
 			}
 
 		}
+        
+        
 		//while (*(MPcore_private_timer_ptr + 3) == 0)
            // ;                                // wait for timer to expire
 		
@@ -121,7 +141,7 @@ int main(void){
 			reset_dimensions();
 	  }
 	
-	  wait_for_vsync();
+	  wait_for_vsync(); 
 	  	
 	//firstDigit = count/100;
 	//secondDigit = (count / 10) - (firstDigit * 10);
@@ -229,7 +249,7 @@ void reset_dimensions () {
 	y_end = y_start+ (rand() % (120 + 1 - 40) + 40);
 	off_screen = false;
 	shift = 0;
-	count++;
+	//count++;
 }
 
 void swap(int *x,int *y){
@@ -250,6 +270,30 @@ void wait_for_vsync(){
   status = *(pixel_ctrl_ptr+3);
  }
 }
+
+void game_over(){
+    
+    y = 238;
+    increment = 0;
+
+    x_start = 300;
+    x_end = 320;
+    y_start = 50;
+    y_end = 100;
+
+    shift = 0;
+    count = 0;
+    
+    while(lost){
+        volatile short * pixelbuf = 0xc8000000;
+        int q, w;
+        for (q=0; q<240; q++)
+            for (w=0; w<320; w++)
+            *(pixelbuf + (w<<0) + (q<<9)) = test123[q][w];
+    }
+    clear_screen();
+}
+
 void plot_pixel(int x, int y, short int line_color)
 
 {
@@ -317,7 +361,7 @@ void config_interval_timer()	{
         (int *)TIMER_BASE; // interal timer base address
 
     /* set the interval timer period for scrolling the HEX displays */
-    int counter                 = 10000000; // 1/(100 MHz) x 5x10^6 = 50 msec
+    int counter                 = 1000000; // 1/(100 MHz) x 5x10^6 = 50 msec
     *(interval_timer_ptr + 0x2) = (counter & 0xFFFF);
     *(interval_timer_ptr + 0x3) = (counter >> 16) & 0xFFFF;
 
@@ -341,7 +385,12 @@ void pushbutton_ISR(void)
 		increment = -1;
 	}else if(y <= 0){
 		increment = 1;
-	} 
+	}
+    
+    if(lost){
+        lost = 0;
+    }
+    
     *(KEY_ptr + 3) = press;          // Clear the interrupt
 
     return;
@@ -355,11 +404,33 @@ void interval_timer_ISR()	{
 	int thirdDigit;
 
     *(interval_timer_ptr) = 0; // Clear the interrupt
-		count++;
-		firstDigit = (count/10)/100;
-		secondDigit = ((count/10) / 10) - (firstDigit * 10);
-		thirdDigit = (count/10) - (firstDigit * 100 + secondDigit*10);
-		*HEX_3_0_pt = seg7[thirdDigit] | seg7[secondDigit] <<8 | seg7[firstDigit] << 16;
+    if(!lost){
+            count++;
+            firstDigit = (count/100)/100;
+            secondDigit = ((count/100) / 10) - (firstDigit * 10);
+            thirdDigit = (count/100) - (firstDigit * 100 + secondDigit*10);
+            *HEX_3_0_pt = seg7[thirdDigit] | seg7[secondDigit] <<8 | seg7[firstDigit] << 16;
+            
+        
+            draw_line(40, y, 100, y, 0x0);
+
+            //Changing direction
+            y = y+increment;
+            if(y >= 238){
+            increment = 0;
+            }else if(y <= 0){
+            increment = 0;
+            } 
+
+            if(((x_start-shift >= 40 && x_start-shift <= 100) || (x_end-shift >= 40 && x_end-shift <= 100)) && 
+               (y >= y_start && y<= y_end) ){
+                //draw_line(40, y, 100, y, 0x7E0);
+                lost = 1;
+            }
+            else{
+                draw_line(40, y, 100, y, 0x001F);
+            }
+    }
 
     return;
 }
