@@ -40,6 +40,9 @@ int shift = 0;
 int count = 0;
 
 int lost = 0;
+int lost1digit = 0;
+int lost2digit = 0;
+int lost3digit = 0;
 
 int seg7[10] = {0b00111111, 0b00000110, 0b01011011, 0b01001111, 0b01100110, 0b01101101, 0b01111101, 0b00000111, 0b01111111, 0b01100111}; 
 
@@ -290,6 +293,7 @@ void game_over(){
         for (q=0; q<240; q++)
             for (w=0; w<320; w++)
             *(pixelbuf + (w<<0) + (q<<9)) = test123[q][w];
+        *HEX_3_0_pt = seg7[lost3digit] | seg7[lost2digit] <<8 | seg7[lost1digit] << 16;
     }
     clear_screen();
 }
@@ -426,6 +430,9 @@ void interval_timer_ISR()	{
                (y >= y_start && y<= y_end) ){
                 //draw_line(40, y, 100, y, 0x7E0);
                 lost = 1;
+                lost1digit = firstDigit;
+                lost2digit = secondDigit;
+                lost3digit = thirdDigit;
             }
             else{
                 draw_line(40, y, 100, y, 0x001F);
